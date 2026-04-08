@@ -1,6 +1,7 @@
 """Integration tests for SimulatorDataSource."""
 
 import asyncio
+from unittest.mock import patch
 
 import pytest
 
@@ -94,19 +95,53 @@ class TestSimulatorDataSource:
         await source.stop()
 
     async def test_exception_resilience(self):
-        """Test that simulator continues running after errors."""
+        """Test that the loop keeps running even when step() raises."""
         cache = PriceCache()
         source = SimulatorDataSource(price_cache=cache, update_interval=0.05)
-
-        # Start with a valid ticker
         await source.start(["AAPL"])
 
-        # Wait for some updates
-        await asyncio.sleep(0.15)
+        # Patch step() to raise on every call
+        with patch.object(source._sim, "step", side_effect=RuntimeError("boom")):
+            await asyncio.sleep(0.2)  # Several cycles with failing step
 
-        # Task should still be running
+        # Task must still be alive after sustained exceptions
         assert source._task is not None
         assert not source._task.done()
+
+        await source.stop()
+
+    async def test_add_ticker_normalizes_case(self):
+        """Test that add_ticker normalizes ticker to uppercase."""
+        cache = PriceCache()
+        source = SimulatorDataSource(price_cache=cache, update_interval=0.1)
+        await source.start([])
+
+        await source.add_ticker("aapl")
+        assert "AAPL" in source.get_tickers()
+        assert cache.get("AAPL") is not None
+
+        await source.stop()
+
+    async def test_add_ticker_strips_whitespace(self):
+        """Test that add_ticker strips surrounding whitespace."""
+        cache = PriceCache()
+        source = SimulatorDataSource(price_cache=cache, update_interval=0.1)
+        await source.start([])
+
+        await source.add_ticker("  MSFT  ")
+        assert "MSFT" in source.get_tickers()
+
+        await source.stop()
+
+    async def test_remove_ticker_normalizes_case(self):
+        """Test that remove_ticker normalizes ticker to uppercase."""
+        cache = PriceCache()
+        source = SimulatorDataSource(price_cache=cache, update_interval=0.1)
+        await source.start(["AAPL"])
+
+        await source.remove_ticker("aapl")
+        assert "AAPL" not in source.get_tickers()
+        assert cache.get("AAPL") is None
 
         await source.stop()
 
