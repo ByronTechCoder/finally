@@ -123,9 +123,7 @@ class TestGBMSimulator:
     def test_prices_rounded_to_two_decimals(self):
         """Test that prices are rounded to 2 decimal places."""
         sim = GBMSimulator(tickers=["AAPL"])
-        result = sim.step()
-        price_str = str(result["AAPL"])
-        # Check that we have at most 2 decimal places
-        if '.' in price_str:
-            decimal_part = price_str.split('.')[1]
-            assert len(decimal_part) <= 2
+        for _ in range(100):
+            result = sim.step()
+            price = result["AAPL"]
+            assert price == round(price, 2)
